@@ -1,6 +1,6 @@
 services:  
   - type: web
-    name: elysiajs-hello-world
+    name: iPick Server
     runtime: node
     repo: https://github.com/Sophistiqq/iPick-Server
     plan: free
