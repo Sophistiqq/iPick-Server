@@ -2,7 +2,7 @@ services:
   - type: web
     name: elysiajs-hello-world
     runtime: node
-    repo: https://github.com/render-examples/elysiajs-hello-world
+    repo: https://github.com/Sophistiqq/iPick-Server
     plan: free
     envVars:
     - key: BUN_VERSION
