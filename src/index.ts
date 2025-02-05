@@ -1,12 +1,13 @@
 import cors from "@elysiajs/cors";
 import swagger from "@elysiajs/swagger";
-import { Elysia, t } from "elysia";
+import { Context, Elysia, t } from "elysia";
 import jwt from "@elysiajs/jwt";
-import { users, activeSessions, ObjectId } from "./dbconfig";
-
+import { users, activeSessions, locations } from "./dbconfig";
+import { Readable } from "stream"
+import { ObjectId } from "mongodb";
 
 const port = process.env.PORT || 3000;
-
+const clients = new Set<any>();
 const app = new Elysia()
   .use(cors())
   .use(swagger())
@@ -15,6 +16,7 @@ const app = new Elysia()
       name: "jwt",
       secret: process.env.JWT_SECRET || "secret",
       sameSite: "Lax",
+      inject: true,
     })
   )
   .post("/register", async ({ body }) => {
@@ -116,7 +118,7 @@ const app = new Elysia()
     body: t.Object({
       username: t.String(),
       password: t.String(),
-    }),
+    })
   })
 
   .get("/me", async ({ headers, jwt, set }) => {
@@ -167,22 +169,67 @@ const app = new Elysia()
     }).toArray();
     return { users: allUsers };
   })
-
   .get("/", () => "Hello Elysia")
 
-  .post("/location", ({ body }) => {
-    const { latitude, longitude } = body;
-    console.log("Location received:", latitude, longitude);
-    return {
-      message: "Location received",
+
+  .get("/events", ({ set }) => {
+    set.headers["Content-Type"] = "text/event-stream";
+    set.headers["Cache-Control"] = "no-cache";
+    set.headers["Connection"] = "keep-alive";
+
+    return new Readable({
+      async read() {
+        const interval = setInterval(async () => {
+          // Retrieve all location data as an array
+          const locationDataArray = await locations.find().toArray();
+          // Send the locations data to the client
+          locationDataArray.forEach(locationData => {
+            this.push(`data: ${JSON.stringify(locationData)}\n\n`);
+          });
+        }, 3000);
+
+        setTimeout(() => {
+          clearInterval(interval);
+          this.push(null); // End the stream
+        }, 5000);
+      }
+    });
+  })
+
+
+  // Endpoint to Receive GPS Data from ESP32
+  .post("/location", async ({ body }) => {
+    const { device_id, latitude, longitude } = body;
+    console.log("Location data received:", body);
+    if (!device_id || !latitude || !longitude) {
+      return { error: "Missing GPS data" };
+    }
+
+    const locationData = {
+      device_id,
       latitude,
-      longitude
+      longitude,
+      timestamp: new Date(),
     };
+
+    // Save to database (update if exists, otherwise insert)
+    await locations.updateOne(
+      { device_id },
+      { $set: locationData },
+      { upsert: true }
+    );
+
+    // Broadcast to all SSE clients
+    const message = `data: ${JSON.stringify(locationData)}\n\n`;
+    clients.forEach((client) => client.send(message));
+
+    return { message: "Location received", status: "success" };
   }, {
     body: t.Object({
+      device_id: t.String(),
       latitude: t.Number(),
       longitude: t.Number(),
-    })
+    }),
   })
   .listen(port);
 

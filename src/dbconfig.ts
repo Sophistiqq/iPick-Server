@@ -8,7 +8,7 @@ const uri: string = process.env.MONGODB_URI || '';
 let db: Db;
 let users: Collection;
 let activeSessions: Collection;
-
+let locations: Collection;
 // Connect to MongoDB immediately
 console.log("Connecting to MongoDB...");
 const client = new MongoClient(uri);
@@ -18,7 +18,7 @@ client.connect()
     db = client.db('authdb');
     users = db.collection('users');
     activeSessions = db.collection('active_sessions');
-
+    locations = db.collection('locations');
     // Create indexes
     users.createIndex({ email: 1 }, { unique: true });
     users.createIndex({ username: 1 }, { unique: true });
@@ -34,4 +34,4 @@ if (!uri) {
 }
 
 
-export { db, users, activeSessions, ObjectId, client };
+export { db, users, activeSessions, ObjectId, client, locations };

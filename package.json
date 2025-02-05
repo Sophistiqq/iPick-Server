@@ -7,6 +7,7 @@
   "dependencies": {
     "@elysiajs/cors": "^1.2.0",
     "@elysiajs/jwt": "^1.2.0",
+    "@elysiajs/stream": "^1.1.0",
     "@elysiajs/swagger": "^1.2.0",
     "dotenv": "^16.4.7",
     "elysia": "latest",
