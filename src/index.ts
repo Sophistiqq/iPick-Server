@@ -1,7 +1,7 @@
 import cors from "@elysiajs/cors";
 import swagger from "@elysiajs/swagger";
-import jwt from "@elysiajs/jwt";
 import { Elysia, t } from "elysia";
+import jwt from "@elysiajs/jwt";
 import { users, activeSessions, ObjectId } from "./dbconfig";
 
 
@@ -116,7 +116,7 @@ const app = new Elysia()
     body: t.Object({
       username: t.String(),
       password: t.String(),
-    })
+    }),
   })
 
   .get("/me", async ({ headers, jwt, set }) => {
