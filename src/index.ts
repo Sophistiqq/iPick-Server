@@ -201,6 +201,21 @@ const app = new Elysia()
   })
 
   .get("/", () => "Hello Elysia")
+
+  .post("/location", ({ body }) => {
+    const { latitude, longitude } = body;
+    console.log("Location received:", latitude, longitude);
+    return {
+      message: "Location received",
+      latitude,
+      longitude
+    };
+  }, {
+    body: t.Object({
+      latitude: t.Number(),
+      longitude: t.Number(),
+    })
+  })
   .listen(port);
 
 console.log(
