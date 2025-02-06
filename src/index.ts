@@ -234,19 +234,20 @@ const app = new Elysia()
     set.headers["Content-Type"] = "text/event-stream";
     set.headers["Cache-Control"] = "no-cache";
     set.headers["Connection"] = "keep-alive";
-
     return new Readable({
       async read() {
-        // Retrieve all location data as an array
-        const locationDataArray = await locations.find().toArray();
-        console.log(locationDataArray);
-
-        // Wrap the location data in a single JSON object
-        const data = { locations: locationDataArray };
-
-        // Send the entire data object to the client once
-        this.push(`data: ${JSON.stringify(data)}\n\n`);
-        this.push(null); // End the stream
+        const interval = setInterval(async () => {
+          // Retrieve all location data as an array
+          const locationDataArray = await locations.find().toArray();
+          // Send the locations data to the client
+          locationDataArray.forEach(locationData => {
+            this.push(`data: ${JSON.stringify(locationData)}\n\n`);
+          });
+        }, 3000);
+        setTimeout(() => {
+          clearInterval(interval);
+          this.push(null); // End the stream
+        }, 5000);
       }
     });
   })
