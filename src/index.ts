@@ -1,8 +1,8 @@
 import cors from "@elysiajs/cors";
 import swagger from "@elysiajs/swagger";
-import { Context, Elysia, t } from "elysia";
+import { Elysia, t } from "elysia";
 import jwt from "@elysiajs/jwt";
-import { users, activeSessions, locations } from "./dbconfig";
+import { users, activeSessions, locations, drivers } from "./dbconfig";
 import { Readable } from "stream"
 import { ObjectId } from "mongodb";
 
@@ -10,7 +10,15 @@ const port = process.env.PORT || 3000;
 const clients = new Set<any>();
 const app = new Elysia()
   .use(cors())
-  .use(swagger())
+  .use(swagger({
+    documentation: {
+      info: {
+        title: "Elysia API",
+        description: "API documentation for Elysia",
+        version: "1.0.0",
+      },
+    }
+  }))
   .use(
     jwt({
       name: "jwt",
@@ -70,6 +78,54 @@ const app = new Elysia()
     }),
   })
 
+  .post("/register-driver", async ({ body }) => {
+    const { fullname, username, email, mobile_number, device_id, password, plate_number } = body;
+    try {
+      const existingUser = await users.findOne({
+        $or: [{ email }, { username }]
+      });
+
+      if (existingUser) {
+        return { error: "User already exists", status: "error" };
+      }
+      const hashedPassword = await Bun.password.hash(password);
+
+      await drivers.insertOne({
+        fullname,
+        username,
+        email,
+        mobile_number,
+        device_id,
+        plate_number,
+        password: hashedPassword,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      return {
+        message: "Driver registered successfully",
+        status: "success"
+      };
+    } catch (error) {
+      console.error("Registration error:", error);
+      return {
+        error: error instanceof Error ? error.message : "Database error",
+        status: "error"
+      };
+    }
+  }, {
+    body: t.Object({
+      fullname: t.String(),
+      username: t.String(),
+      email: t.String(),
+      mobile_number: t.String(),
+      device_id: t.String(),
+      password: t.String(),
+      plate_number: t.String(),
+    })
+  })
+
+
   .post("/login", async ({ body, jwt, headers }) => {
     const { username, password } = body;
 
@@ -101,9 +157,11 @@ const app = new Elysia()
       });
 
       const { password: _, ...safeUser } = user;
+      const userType = user.plate_number ? "driver" : "user";
       return {
         message: "Login successful",
         token,
+        userType,
         user: safeUser,
         status: "success"
       };
@@ -179,19 +237,16 @@ const app = new Elysia()
 
     return new Readable({
       async read() {
-        const interval = setInterval(async () => {
-          // Retrieve all location data as an array
-          const locationDataArray = await locations.find().toArray();
-          // Send the locations data to the client
-          locationDataArray.forEach(locationData => {
-            this.push(`data: ${JSON.stringify(locationData)}\n\n`);
-          });
-        }, 3000);
+        // Retrieve all location data as an array
+        const locationDataArray = await locations.find().toArray();
+        console.log(locationDataArray);
 
-        setTimeout(() => {
-          clearInterval(interval);
-          this.push(null); // End the stream
-        }, 5000);
+        // Wrap the location data in a single JSON object
+        const data = { locations: locationDataArray };
+
+        // Send the entire data object to the client once
+        this.push(`data: ${JSON.stringify(data)}\n\n`);
+        this.push(null); // End the stream
       }
     });
   })
@@ -230,6 +285,10 @@ const app = new Elysia()
       latitude: t.Number(),
       longitude: t.Number(),
     }),
+  })
+  .get("/page/unit-management", async () => {
+    const allDrivers = await drivers.find().toArray();
+    return { drivers: allDrivers };
   })
   .listen(port);
 
