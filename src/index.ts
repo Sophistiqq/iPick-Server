@@ -2,12 +2,33 @@ import cors from "@elysiajs/cors";
 import swagger from "@elysiajs/swagger";
 import { Elysia, t } from "elysia";
 import jwt from "@elysiajs/jwt";
-import { users, activeSessions, locations, drivers } from "./dbconfig";
-import { Readable } from "stream"
+import { users, activeSessions, locations_db, drivers } from "./dbconfig";
+import { Readable } from "stream";
 import { ObjectId } from "mongodb";
 
 const port = process.env.PORT || 3000;
 const clients = new Set<any>();
+const locations = new Map(); // Key: device_id, Value: { latitude, longitude, timestamp }
+
+// Function to remove stale locations
+setInterval(() => {
+  const now = Date.now();
+  locations.forEach((value: { timestamp: number; }, device_id: any) => {
+    if (now - value.timestamp > 30000) { // 30 seconds expiry
+      locations.delete(device_id);
+    }
+  });
+}, 10000); // Check every 10 seconds
+
+// Function to log locations to the database
+setInterval(async () => {
+  const locationDataArray = Array.from(locations.values());
+  if (locationDataArray.length > 0) {
+    await locations_db.insertMany(locationDataArray); // Log to database
+    console.log("Locations logged to database:", locationDataArray.length);
+  }
+}, 60000); // Log every 60 seconds
+
 const app = new Elysia()
   .use(cors())
   .use(swagger({
@@ -125,7 +146,6 @@ const app = new Elysia()
     })
   })
 
-
   .post("/login", async ({ body, jwt, headers }) => {
     const { username, password } = body;
 
@@ -229,31 +249,33 @@ const app = new Elysia()
   })
   .get("/", () => "Hello Elysia")
 
-
   .get("/events", ({ set }) => {
     set.headers["Content-Type"] = "text/event-stream";
     set.headers["Cache-Control"] = "no-cache";
     set.headers["Connection"] = "keep-alive";
-    return new Readable({
+
+    const clientId = Symbol(); // Unique identifier for the client
+    clients.add(clientId);
+
+    const readable = new Readable({
       async read() {
-        const interval = setInterval(async () => {
-          // Retrieve all location data as an array
-          const locationDataArray = await locations.find().toArray();
-          // Send the locations data to the client
-          locationDataArray.forEach(locationData => {
-            this.push(`data: ${JSON.stringify(locationData)}\n\n`);
-          });
-        }, 3000);
-        setTimeout(() => {
+        const interval = setInterval(() => {
+          // Send all locations to the client
+          const locationDataArray = Array.from(locations.values());
+          this.push(`data: ${JSON.stringify(locationDataArray)}\n\n`);
+        }, 3000); // Send every 3 seconds
+
+        // Clean up on client disconnect
+        readable.on("close", () => {
           clearInterval(interval);
-          this.push(null); // End the stream
-        }, 5000);
-      }
+          clients.delete(clientId);
+        });
+      },
     });
+
+    return readable;
   })
 
-
-  // Endpoint to Receive GPS Data from ESP32
   .post("/location", async ({ body }) => {
     const { device_id, latitude, longitude } = body;
     console.log("Location data received:", body);
@@ -265,18 +287,14 @@ const app = new Elysia()
       device_id,
       latitude,
       longitude,
-      timestamp: new Date(),
+      timestamp: Date.now(), // Use current timestamp
     };
 
-    // Save to database (update if exists, otherwise insert)
-    await locations.updateOne(
-      { device_id },
-      { $set: locationData },
-      { upsert: true }
-    );
+    // Save to in-memory storage
+    locations.set(device_id, locationData);
 
     // Broadcast to all SSE clients
-    const message = `data: ${JSON.stringify(locationData)}\n\n`;
+    const message = `data: ${JSON.stringify(Array.from(locations.values()))}\n\n`;
     clients.forEach((client) => client.send(message));
 
     return { message: "Location received", status: "success" };
