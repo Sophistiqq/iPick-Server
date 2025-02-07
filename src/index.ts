@@ -5,16 +5,120 @@ import jwt from "@elysiajs/jwt";
 import { users, activeSessions, locations_db, drivers } from "./dbconfig";
 import { Readable } from "stream";
 import { ObjectId } from "mongodb";
-
 const port = process.env.PORT || 3000;
-const clients = new Set<any>();
 const locations = new Map(); // Key: device_id, Value: { latitude, longitude, timestamp }
+
+// SSE Management
+class SSEManager {
+  private clients: Map<Symbol, Readable> = new Map();
+  private locations: Map<string, LocationData> = new Map();
+  private cleanupInterval;
+  private logInterval;
+
+  constructor() {
+    // Cleanup stale locations every 10 seconds
+    this.cleanupInterval = setInterval(() => this.cleanupStaleLocations(), 10000);
+
+    // Log locations to database every 60 seconds
+    this.logInterval = setInterval(() => this.logLocationsToDB(), 60000);
+  }
+
+  private async cleanupStaleLocations() {
+    const now = Date.now();
+    const staleTimeout = 30000; // 30 seconds
+
+    for (const [deviceId, data] of this.locations.entries()) {
+      if (now - data.timestamp > staleTimeout) {
+        console.log("Removing stale location:", deviceId);
+        this.locations.delete(deviceId);
+      }
+    }
+  }
+
+  private async logLocationsToDB() {
+    const locationDataArray = Array.from(this.locations.values());
+    if (locationDataArray.length > 0) {
+      try {
+        await locations_db.insertMany(locationDataArray);
+        console.log("Locations logged to database:", locationDataArray.length);
+      } catch (error) {
+        console.error("Error logging locations to database:", error);
+      }
+    }
+  }
+
+  addClient(clientId: Symbol, stream: Readable) {
+    this.clients.set(clientId, stream);
+
+    // Setup cleanup for this client
+    stream.once('end', () => this.removeClient(clientId));
+    stream.once('error', () => this.removeClient(clientId));
+
+    // Set maximum listeners to prevent memory leak warnings
+    stream.setMaxListeners(15);
+
+    return () => this.removeClient(clientId);
+  }
+
+  removeClient(clientId: Symbol) {
+    const stream = this.clients.get(clientId);
+    if (stream) {
+      stream.removeAllListeners();
+      stream.destroy();
+      this.clients.delete(clientId);
+    }
+  }
+
+  updateLocation(locationData: LocationData) {
+    this.locations.set(locationData.device_id, locationData);
+    this.broadcastLocations();
+  }
+
+  private broadcastLocations() {
+    const locationDataArray = Array.from(this.locations.values());
+    const message = `data: ${JSON.stringify(locationDataArray)}\n\n`;
+
+    for (const [clientId, stream] of this.clients.entries()) {
+      try {
+        if (!stream.destroyed) {
+          stream.push(message);
+        } else {
+          this.removeClient(clientId);
+        }
+      } catch (error) {
+        console.error("Error broadcasting to client:", error);
+        this.removeClient(clientId);
+      }
+    }
+  }
+
+  cleanup() {
+    clearInterval(this.cleanupInterval);
+    clearInterval(this.logInterval);
+
+    for (const [clientId] of this.clients) {
+      this.removeClient(clientId);
+    }
+  }
+}
+// Types
+interface LocationData {
+  device_id: string;
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
+// Create SSE manager instance
+const sseManager = new SSEManager();
+
 
 // Function to remove stale locations
 setInterval(() => {
   const now = Date.now();
   locations.forEach((value: { timestamp: number; }, device_id: any) => {
     if (now - value.timestamp > 30000) { // 30 seconds expiry
+      console.log("Removing stale location:", device_id);
       locations.delete(device_id);
     }
   });
@@ -254,24 +358,16 @@ const app = new Elysia()
     set.headers["Cache-Control"] = "no-cache";
     set.headers["Connection"] = "keep-alive";
 
-    const clientId = Symbol(); // Unique identifier for the client
-    clients.add(clientId);
-
+    const clientId = Symbol();
     const readable = new Readable({
-      async read() {
-        const interval = setInterval(() => {
-          // Send all locations to the client
-          const locationDataArray = Array.from(locations.values());
-          this.push(`data: ${JSON.stringify(locationDataArray)}\n\n`);
-        }, 3000); // Send every 3 seconds
-
-        // Clean up on client disconnect
-        readable.on("close", () => {
-          clearInterval(interval);
-          clients.delete(clientId);
-        });
-      },
+      read() { } // Implementation moved to SSEManager
     });
+
+    // Add client to SSE manager
+    const cleanup = sseManager.addClient(clientId, readable);
+
+    // Ensure cleanup happens
+    readable.on('close', cleanup);
 
     return readable;
   })
@@ -279,23 +375,19 @@ const app = new Elysia()
   .post("/location", async ({ body }) => {
     const { device_id, latitude, longitude } = body;
     console.log("Location data received:", body);
+
     if (!device_id || !latitude || !longitude) {
       return { error: "Missing GPS data" };
     }
 
-    const locationData = {
+    const locationData: LocationData = {
       device_id,
       latitude,
       longitude,
-      timestamp: Date.now(), // Use current timestamp
+      timestamp: Date.now(),
     };
 
-    // Save to in-memory storage
-    locations.set(device_id, locationData);
-
-    // Broadcast to all SSE clients
-    const message = `data: ${JSON.stringify(Array.from(locations.values()))}\n\n`;
-    clients.forEach((client) => client.send(message));
+    sseManager.updateLocation(locationData);
 
     return { message: "Location received", status: "success" };
   }, {
@@ -309,8 +401,27 @@ const app = new Elysia()
     const allDrivers = await drivers.find().toArray();
     return { drivers: allDrivers };
   })
-  .listen(port);
+  .get("/page/user-data:username", async ({ params }) => {
+    const { username } = params;
+    const user = await users.findOne({ username });
+    return { user };
+  }, {
+    params: t.Object({
+      username: t.String(),
+    }),
+  })
 
+  .listen(port);
+// Cleanup on process termination
+process.on('SIGTERM', () => {
+  sseManager.cleanup();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  sseManager.cleanup();
+  process.exit(0);
+});
 console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${port}`
 );
