@@ -29,7 +29,6 @@ class SSEManager {
 
     for (const [deviceId, data] of this.locations.entries()) {
       if (now - data.timestamp > staleTimeout) {
-        console.log("Removing stale location:", deviceId);
         this.locations.delete(deviceId);
       }
     }
@@ -40,7 +39,6 @@ class SSEManager {
     if (locationDataArray.length > 0) {
       try {
         await locations_db.insertMany(locationDataArray);
-        console.log("Locations logged to database:", locationDataArray.length);
       } catch (error) {
         console.error("Error logging locations to database:", error);
       }
@@ -129,7 +127,6 @@ setInterval(async () => {
   const locationDataArray = Array.from(locations.values());
   if (locationDataArray.length > 0) {
     await locations_db.insertMany(locationDataArray); // Log to database
-    console.log("Locations logged to database:", locationDataArray.length);
   }
 }, 60000); // Log every 60 seconds
 
@@ -423,7 +420,6 @@ const app = new Elysia()
 
   .post("/change-password", async ({ body }) => {
     const { username, old_password, new_password } = body;
-    console.log("Change password data received:", body);
     try {
       const user = await users.findOne({ username });
       if (!user) {
