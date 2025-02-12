@@ -25,11 +25,12 @@ class SSEManager {
 
   private async cleanupStaleLocations() {
     const now = Date.now();
-    const staleTimeout = 30000; // 30 seconds
+    const staleTimeout = 10000; // 30 seconds
 
     for (const [deviceId, data] of this.locations.entries()) {
       if (now - data.timestamp > staleTimeout) {
         console.log("Removing stale location:", deviceId);
+        console.log(locations)
         this.locations.delete(deviceId);
       }
     }
@@ -408,6 +409,45 @@ const app = new Elysia()
   }, {
     params: t.Object({
       username: t.String(),
+    }),
+  })
+  // Get all locations, it contains _id, device_id, latitude, longitude, timestamp
+  .get("/unit-history", async () => {
+    const latestLocations = await locations_db.aggregate([
+      { $sort: { timestamp: -1 } },
+      { $group: { _id: "$device_id", latestLocation: { $first: "$$ROOT" } } },
+      { $replaceRoot: { newRoot: "$latestLocation" } }
+    ]).toArray();
+    return { locations: latestLocations };
+  })
+
+  .post("/change-password", async ({ body }) => {
+    const { username, old_password, new_password } = body;
+    console.log("Change password data received:", body);
+    try {
+      const user = await users.findOne({ username });
+      if (!user) {
+        return { error: "User not found", status: "error" };
+      }
+
+      const isValid = await Bun.password.verify(old_password, user.password);
+      if (!isValid) {
+        return { error: "Invalid old password", status: "error" };
+      }
+
+      const hashedPassword = await Bun.password.hash(new_password);
+      await users.updateOne({ username }, { $set: { password: hashedPassword } });
+
+      return { message: "Password changed successfully", status: "success" };
+    } catch (error) {
+      console.error("Change password error:", error);
+      return { error: "Password change failed", status: "error" };
+    }
+  }, {
+    body: t.Object({
+      username: t.String(),
+      old_password: t.String(),
+      new_password: t.String(),
     }),
   })
 
