@@ -30,7 +30,6 @@ class SSEManager {
     for (const [deviceId, data] of this.locations.entries()) {
       if (now - data.timestamp > staleTimeout) {
         console.log("Removing stale location:", deviceId);
-        console.log(locations)
         this.locations.delete(deviceId);
       }
     }
@@ -135,7 +134,9 @@ setInterval(async () => {
 }, 60000); // Log every 60 seconds
 
 const app = new Elysia()
-  .use(cors())
+  .use(cors({
+    origin: "*",
+  }))
   .use(swagger({
     documentation: {
       info: {
@@ -375,7 +376,6 @@ const app = new Elysia()
 
   .post("/location", async ({ body }) => {
     const { device_id, latitude, longitude } = body;
-    console.log("Location data received:", body);
 
     if (!device_id || !latitude || !longitude) {
       return { error: "Missing GPS data" };
