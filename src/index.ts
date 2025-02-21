@@ -29,6 +29,7 @@ class SSEManager {
 
     for (const [deviceId, data] of this.locations.entries()) {
       if (now - data.timestamp > staleTimeout) {
+        console.log("Removing stale location:", deviceId);
         this.locations.delete(deviceId);
       }
     }
@@ -104,6 +105,8 @@ interface LocationData {
   device_id: string;
   latitude: number;
   longitude: number;
+  body_number: string;
+  device_name: string;
   timestamp: number;
 }
 
@@ -372,7 +375,7 @@ const app = new Elysia()
   })
 
   .post("/location", async ({ body }) => {
-    const { device_id, latitude, longitude } = body;
+    const { device_id, latitude, longitude, device_name, body_number } = body;
 
     if (!device_id || !latitude || !longitude) {
       return { error: "Missing GPS data" };
@@ -382,6 +385,8 @@ const app = new Elysia()
       device_id,
       latitude,
       longitude,
+      device_name,
+      body_number,
       timestamp: Date.now(),
     };
 
@@ -393,6 +398,8 @@ const app = new Elysia()
       device_id: t.String(),
       latitude: t.Number(),
       longitude: t.Number(),
+      device_name: t.String(),
+      body_number: t.String(),
     }),
   })
   .get("/page/unit-management", async () => {
@@ -420,6 +427,7 @@ const app = new Elysia()
 
   .post("/change-password", async ({ body }) => {
     const { username, old_password, new_password } = body;
+    console.log("Change password request:", body);
     try {
       const user = await users.findOne({ username });
       if (!user) {
