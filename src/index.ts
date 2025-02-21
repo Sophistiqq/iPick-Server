@@ -454,6 +454,29 @@ const app = new Elysia()
       new_password: t.String(),
     }),
   })
+  .post("/get-unit-details", async ({ body }) => {
+    const { device_id } = body;
+    console.log("Device details:", device_id);
+    const devices = await locations_db.aggregate([
+      { $match: { device_id } },
+      {
+        $group: {
+          _id: "$device_id",  // Group by device_id instead of _id
+          device_name: { $first: "$device_name" },
+          body_number: { $first: "$body_number" },
+          logs: {
+            $push: { latitude: "$latitude", longitude: "$longitude", timestamp: "$timestamp" }
+          }
+        }
+      }
+    ]).toArray();
+    console.log("Device details:", devices);
+    return { devices };
+  }, {
+    body: t.Object({
+      device_id: t.String(),
+    }),
+  })
 
   .listen(port);
 // Cleanup on process termination
