@@ -247,12 +247,12 @@ const app = new Elysia()
       const user = await users.findOne({ username });
 
       if (!user) {
-        return { error: "Invalid credentials", status: "error" };
+        return { message: "Can't find that user", status: "error" };
       }
 
       const isValid = await Bun.password.verify(password, user.password);
       if (!isValid) {
-        return { error: "Invalid credentials", status: "error" };
+        return { message: "Wrong password", status: "error" };
       }
 
       await activeSessions.deleteMany({ user_id: user._id });
