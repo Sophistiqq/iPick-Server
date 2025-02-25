@@ -5,6 +5,7 @@ import jwt from "@elysiajs/jwt";
 import { users, activeSessions, locations_db, drivers } from "./dbconfig";
 import { Readable } from "stream";
 import { ObjectId } from "mongodb";
+import os from "os"
 const port = process.env.PORT || 3000;
 const locations = new Map(); // Key: device_id, Value: { latitude, longitude, timestamp }
 
@@ -462,6 +463,16 @@ const app = new Elysia()
     body: t.Object({
       device_id: t.String(),
     }),
+  })
+  .get("/get-dashboard-data", () => {
+    let serverStatus = {
+      SystemUptime: process.uptime(),
+      RAM: process.memoryUsage(),
+      ServerName: os.hostname(),
+      ServerIp: os.networkInterfaces(),
+      CPU: os.cpus(),
+    }
+    return { serverStatus }
   })
 
   .listen(port);
