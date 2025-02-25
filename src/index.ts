@@ -146,16 +146,14 @@ const app = new Elysia()
   )
   .post("/register", async ({ body }) => {
     const { fullname, username, email, mobile_number, password } = body;
-
     try {
       const existingUser = await users.findOne({
         $or: [{ email }, { username }]
       });
 
       if (existingUser) {
-        return { error: "User already exists", status: "error" };
+        return { message: "User already exists", status: "error" };
       }
-
       const hashedPassword = await Bun.password.hash(password);
 
       const result = await users.insertOne({
