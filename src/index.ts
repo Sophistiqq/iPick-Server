@@ -25,7 +25,7 @@ class SSEManager {
 
   private async cleanupStaleLocations() {
     const now = Date.now();
-    const staleTimeout = 10000; // 30 seconds
+    const staleTimeout = 10000; // 10 seconds
 
     for (const [deviceId, data] of this.locations.entries()) {
       if (now - data.timestamp > staleTimeout) {
@@ -114,16 +114,6 @@ interface LocationData {
 const sseManager = new SSEManager();
 
 
-// Function to remove stale locations
-setInterval(() => {
-  const now = Date.now();
-  locations.forEach((value: { timestamp: number; }, device_id: any) => {
-    if (now - value.timestamp > 30000) { // 30 seconds expiry
-      console.log("Removing stale location:", device_id);
-      locations.delete(device_id);
-    }
-  });
-}, 10000); // Check every 10 seconds
 
 // Function to log locations to the database
 setInterval(async () => {
@@ -456,7 +446,6 @@ const app = new Elysia()
   })
   .post("/get-unit-details", async ({ body }) => {
     const { device_id } = body;
-    console.log("Device details:", device_id);
     const devices = await locations_db.aggregate([
       { $match: { device_id } },
       {
@@ -470,7 +459,6 @@ const app = new Elysia()
         }
       }
     ]).toArray();
-    console.log("Device details:", devices);
     return { devices };
   }, {
     body: t.Object({
