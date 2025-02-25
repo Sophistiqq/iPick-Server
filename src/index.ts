@@ -466,11 +466,11 @@ const app = new Elysia()
   })
   .get("/get-dashboard-data", () => {
     let serverStatus = {
-      SystemUptime: process.uptime(),
-      RAM: process.memoryUsage(),
+      SystemUptime: (process.uptime() / 60).toFixed(2) + " minutes",
+      RAM: os.freemem() / (1024 ** 3),
       ServerName: os.hostname(),
       ServerIp: os.networkInterfaces(),
-      CPU: os.cpus(),
+      CPU: os.loadavg(),
     }
     return { serverStatus }
   })
