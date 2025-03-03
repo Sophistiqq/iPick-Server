@@ -9,9 +9,11 @@
     "@elysiajs/jwt": "^1.2.0",
     "@elysiajs/stream": "^1.1.0",
     "@elysiajs/swagger": "^1.2.0",
+    "@types/nodemailer": "^6.4.17",
     "dotenv": "^16.4.7",
     "elysia": "^1.2.12",
-    "mongodb": "^6.13.0"
+    "mongodb": "^6.13.0",
+    "nodemailer": "^6.10.0"
   },
   "devDependencies": {
     "@types/bun": "latest"

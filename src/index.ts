@@ -6,8 +6,24 @@ import { users, activeSessions, locations_db, drivers } from "./dbconfig";
 import { Readable } from "stream";
 import { ObjectId } from "mongodb";
 import os from "os"
+import nodemailer from "nodemailer";
 const port = process.env.PORT || 3000;
 const locations = new Map(); // Key: device_id, Value: { latitude, longitude, timestamp }
+
+
+// Email setup
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  }
+});
+
+let otps = new Map(); // Key: email, Value: otp
+
+
+
 
 // SSE Management
 class SSEManager {
@@ -473,6 +489,122 @@ const app = new Elysia()
       CPU: os.loadavg(),
     }
     return { serverStatus }
+  })
+  //.post("/forgot-password/check-email", async ({ body }) => {
+  //  const { email } = body;
+  //  const user = await users.findOne({ email });
+  //  if (!user) {
+  //    return { message: "User not found", status: "error" };
+  //  } else {
+  //    return { message: "Valid Email, Proceed to Step 2", status: "success" };
+  //  }
+  //}, {
+  //  body: t.Object({
+  //    email: t.String()
+  //  })
+  //})
+  //
+  //.post("/send-otp", async ({ body }) => {
+  //  const { email } = body;
+  //  if (!email) return { success: false, message: "Email is required" };
+  //
+  //  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  //  otps.set(email, otp);
+  //  try {
+  //    const mailOptions = {
+  //      from: `"iTrack Team" <no-reply@gmail.com>`,
+  //      to: email,
+  //      replyTo: "no-reply@gmail.com",
+  //      subject: "Your OTP Code",
+  //      text: `Your OTP code is: ${otp}`,
+  //      html: `Your OTP code is: <b>${otp}</b>`,
+  //    };
+  //
+  //    const info = await transporter.sendMail(mailOptions);
+  //    console.log("OTP Sent:", info);
+  //    return { status: "success", message: "OTP sent successfully" };
+  //  } catch (error) {
+  //    console.error("Error sending OTP:", error);
+  //    return { status: "success", message: "Failed to send OTP" };
+  //  }
+  //}, {
+  //  body: t.Object({
+  //    email: t.String(),
+  //  })
+  //})
+  .group("/forgot-password", group => {
+    return group
+      .post("/check-email", async ({ body }) => {
+        const { email } = body;
+        const user = await users.findOne({ email });
+        if (!user) {
+          return { message: "User not found", status: "error" };
+        } else {
+          return { message: "Valid Email, Proceed to Step 2", status: "success" };
+        }
+      }, {
+        body: t.Object({
+          email: t.String()
+        })
+      })
+      .post("/send-otp", async ({ body }) => {
+        const { email } = body;
+        if (!email) return { success: false, message: "Email is required" };
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        otps.set(email, otp);
+        try {
+          const mailOptions = {
+            from: `"iTrack Team" <no-reply@gmail.com>`,
+            to: email,
+            replyTo: "no-reply@gmail.com",
+            subject: "Your OTP Code",
+            text: `Your OTP code is: ${otp}`,
+            html: `Your OTP code is: <b>${otp}</b>`,
+          };
+
+          const info = await transporter.sendMail(mailOptions);
+          //console.log("OTP Sent:", info);
+          return { status: "success", message: "OTP sent successfully" };
+        } catch (error) {
+          console.error("Error sending OTP:", error);
+          return { status: "success", message: "Failed to send OTP" };
+        }
+      }, {
+        body: t.Object({
+          email: t.String(),
+        })
+      })
+      .post("/verify-otp", async ({ body }) => {
+        const { email, otp } = body;
+        if (!email || !otp) return { success: false, message: "Email and OTP are required" };
+
+        const storedOtp = otps.get(email);
+        if (otp !== storedOtp) {
+          return { success: false, message: "Invalid OTP" };
+        }
+
+        return { status: "success", message: "OTP verified successfully" };
+      }, {
+        body: t.Object({
+          email: t.String(),
+          otp: t.String(),
+        })
+      })
+      .post("/reset-password", async ({ body }) => {
+        const { email, password } = body;
+        if (!email || !password) return { success: false, message: "Email and password are required" };
+
+        const hashedPassword = await Bun.password.hash(password);
+        await users.updateOne({ email }, { $set: { password: hashedPassword } });
+
+        return { status: "success", message: "Password reset successfully" };
+      }, {
+        body: t.Object({
+          email: t.String(),
+          password: t.String(),
+        })
+      })
   })
 
   .listen(port);
