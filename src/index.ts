@@ -381,7 +381,7 @@ const app = new Elysia()
 
   .post("/location", async ({ body }) => {
     const { device_id, latitude, longitude, device_name, body_number } = body;
-
+    console.log("Location received:", body);
     if (!device_id || !latitude || !longitude) {
       return { error: "Missing GPS data" };
     }
