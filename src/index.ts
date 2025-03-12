@@ -162,7 +162,8 @@ const app = new Elysia()
     })
   )
   .post("/register", async ({ body }) => {
-    const { fullname, username, email, mobile_number, password } = body;
+    const { name, username, email, password, phone, avatar, address, account_type, subscription } = body;
+    console.log("Registration request:", body);
     try {
       const existingUser = await users.findOne({
         $or: [{ email }, { username }]
@@ -174,10 +175,14 @@ const app = new Elysia()
       const hashedPassword = await Bun.password.hash(password);
 
       const result = await users.insertOne({
-        fullname,
+        name,
         username,
         email,
-        mobile_number,
+        phone,
+        avatar,
+        address,
+        account_type,
+        subscription,
         password: hashedPassword,
         created_at: new Date(),
         updated_at: new Date()
@@ -202,60 +207,24 @@ const app = new Elysia()
     }
   }, {
     body: t.Object({
-      fullname: t.String(),
+      name: t.String(),
       username: t.String(),
       email: t.String(),
-      mobile_number: t.String(),
       password: t.String(),
+      phone: t.String(),
+      avatar: t.String(),
+      address: t.String(),
+      account_type: t.String(),
+      subscription: t.Optional(t.Object({
+        type: t.String(),
+        status: t.String(),
+        start_date: t.String(),
+        expires_at: t.String(),
+        device_allowed: t.Number(),
+      }))
     }),
   })
 
-  .post("/register-driver", async ({ body }) => {
-    const { fullname, username, email, mobile_number, device_id, password, plate_number } = body;
-    try {
-      const existingUser = await users.findOne({
-        $or: [{ email }, { username }]
-      });
-
-      if (existingUser) {
-        return { error: "User already exists", status: "error" };
-      }
-      const hashedPassword = await Bun.password.hash(password);
-
-      await drivers.insertOne({
-        fullname,
-        username,
-        email,
-        mobile_number,
-        device_id,
-        plate_number,
-        password: hashedPassword,
-        created_at: new Date(),
-        updated_at: new Date()
-      });
-
-      return {
-        message: "Driver registered successfully",
-        status: "success"
-      };
-    } catch (error) {
-      console.error("Registration error:", error);
-      return {
-        error: error instanceof Error ? error.message : "Database error",
-        status: "error"
-      };
-    }
-  }, {
-    body: t.Object({
-      fullname: t.String(),
-      username: t.String(),
-      email: t.String(),
-      mobile_number: t.String(),
-      device_id: t.String(),
-      password: t.String(),
-      plate_number: t.String(),
-    })
-  })
 
   .post("/login", async ({ body, jwt, headers }) => {
     const { username, password } = body;
