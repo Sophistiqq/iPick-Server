@@ -2,13 +2,14 @@ import cors from "@elysiajs/cors";
 import swagger from "@elysiajs/swagger";
 import { Elysia, t } from "elysia";
 import jwt from "@elysiajs/jwt";
-import { users, activeSessions, locations_db, drivers } from "./dbconfig";
-import { Readable } from "stream";
+import { users, activeSessions, locations_db } from "./dbconfig";
 import { ObjectId } from "mongodb";
 import os from "os"
 import nodemailer from "nodemailer";
 const port = process.env.PORT || 3000;
 const locations = new Map(); // Key: device_id, Value: { latitude, longitude, timestamp }
+import { LocationData, SSEManager } from "./SSEManager";
+import { Readable } from "stream";
 
 
 // Email setup
@@ -21,118 +22,10 @@ const transporter = nodemailer.createTransport({
 });
 
 let otps = new Map(); // Key: email, Value: otp
-
-
-
-
-// SSE Management
-class SSEManager {
-  private clients: Map<Symbol, Readable> = new Map();
-  private locations: Map<string, LocationData> = new Map();
-  private cleanupInterval;
-  private logInterval;
-
-  constructor() {
-    // Cleanup stale locations every 10 seconds
-    this.cleanupInterval = setInterval(() => this.cleanupStaleLocations(), 10000);
-
-    // Log locations to database every 60 seconds
-    this.logInterval = setInterval(() => this.logLocationsToDB(), 60000);
-  }
-
-  private async cleanupStaleLocations() {
-    const now = Date.now();
-    const staleTimeout = 10000; // 10 seconds
-
-    for (const [deviceId, data] of this.locations.entries()) {
-      if (now - data.timestamp > staleTimeout) {
-        console.log("Removing stale location:", deviceId);
-        this.locations.delete(deviceId);
-      }
-    }
-  }
-
-  private async logLocationsToDB() {
-    const locationDataArray = Array.from(this.locations.values());
-    if (locationDataArray.length > 0) {
-      try {
-        await locations_db.insertMany(locationDataArray);
-      } catch (error) {
-        console.error("Error logging locations to database:", error);
-      }
-    }
-  }
-
-  addClient(clientId: Symbol, stream: Readable) {
-    this.clients.set(clientId, stream);
-
-    // Setup cleanup for this client
-    stream.once('end', () => this.removeClient(clientId));
-    stream.once('error', () => this.removeClient(clientId));
-
-    // Set maximum listeners to prevent memory leak warnings
-    stream.setMaxListeners(15);
-
-    return () => this.removeClient(clientId);
-  }
-
-  removeClient(clientId: Symbol) {
-    const stream = this.clients.get(clientId);
-    if (stream) {
-      stream.removeAllListeners();
-      stream.destroy();
-      this.clients.delete(clientId);
-    }
-  }
-
-  updateLocation(locationData: LocationData) {
-    this.locations.set(locationData.device_id, locationData);
-    this.broadcastLocations();
-  }
-
-  private broadcastLocations() {
-    const locationDataArray = Array.from(this.locations.values());
-    const message = `data: ${JSON.stringify(locationDataArray)}\n\n`;
-
-    for (const [clientId, stream] of this.clients.entries()) {
-      try {
-        if (!stream.destroyed) {
-          stream.push(message);
-        } else {
-          this.removeClient(clientId);
-        }
-      } catch (error) {
-        console.error("Error broadcasting to client:", error);
-        this.removeClient(clientId);
-      }
-    }
-  }
-
-  cleanup() {
-    clearInterval(this.cleanupInterval);
-    clearInterval(this.logInterval);
-
-    for (const [clientId] of this.clients) {
-      this.removeClient(clientId);
-    }
-  }
-}
-// Types
-interface LocationData {
-  device_id: string;
-  latitude: number;
-  longitude: number;
-  body_number: string;
-  device_name: string;
-  timestamp: number;
-}
-
 // Create SSE manager instance
 const sseManager = new SSEManager();
-
-
-
 // Function to log locations to the database
+
 setInterval(async () => {
   const locationDataArray = Array.from(locations.values());
   if (locationDataArray.length > 0) {
@@ -257,11 +150,9 @@ const app = new Elysia()
       });
 
       const { password: _, ...safeUser } = user;
-      const userType = user.plate_number ? "driver" : "user";
       return {
         message: "Login successful",
         token,
-        userType,
         user: safeUser,
         status: "success"
       };
@@ -376,10 +267,6 @@ const app = new Elysia()
       body_number: t.String(),
     }),
   })
-  .get("/page/unit-management", async () => {
-    const allDrivers = await drivers.find().toArray();
-    return { drivers: allDrivers };
-  })
   .get("/page/user-data:username", async ({ params }) => {
     const { username } = params;
     const user = await users.findOne({ username });
@@ -459,48 +346,6 @@ const app = new Elysia()
     }
     return { serverStatus }
   })
-  //.post("/forgot-password/check-email", async ({ body }) => {
-  //  const { email } = body;
-  //  const user = await users.findOne({ email });
-  //  if (!user) {
-  //    return { message: "User not found", status: "error" };
-  //  } else {
-  //    return { message: "Valid Email, Proceed to Step 2", status: "success" };
-  //  }
-  //}, {
-  //  body: t.Object({
-  //    email: t.String()
-  //  })
-  //})
-  //
-  //.post("/send-otp", async ({ body }) => {
-  //  const { email } = body;
-  //  if (!email) return { success: false, message: "Email is required" };
-  //
-  //  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  //  otps.set(email, otp);
-  //  try {
-  //    const mailOptions = {
-  //      from: `"iTrack Team" <no-reply@gmail.com>`,
-  //      to: email,
-  //      replyTo: "no-reply@gmail.com",
-  //      subject: "Your OTP Code",
-  //      text: `Your OTP code is: ${otp}`,
-  //      html: `Your OTP code is: <b>${otp}</b>`,
-  //    };
-  //
-  //    const info = await transporter.sendMail(mailOptions);
-  //    console.log("OTP Sent:", info);
-  //    return { status: "success", message: "OTP sent successfully" };
-  //  } catch (error) {
-  //    console.error("Error sending OTP:", error);
-  //    return { status: "success", message: "Failed to send OTP" };
-  //  }
-  //}, {
-  //  body: t.Object({
-  //    email: t.String(),
-  //  })
-  //})
   .group("/forgot-password", group => {
     return group
       .post("/check-email", async ({ body }) => {
@@ -532,7 +377,7 @@ const app = new Elysia()
             html: `Your OTP code is: <b>${otp}</b>`,
           };
 
-          const info = await transporter.sendMail(mailOptions);
+          await transporter.sendMail(mailOptions);
           //console.log("OTP Sent:", info);
           return { status: "success", message: "OTP sent successfully" };
         } catch (error) {
@@ -588,5 +433,5 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 console.log(
-  `🦊 Elysia is running at ${app.server?.hostname}:${port}`
+  `Elysia is running at ${app.server?.hostname}:${port}`
 );
