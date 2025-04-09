@@ -89,32 +89,54 @@ dbConnected
       })
 
       .post("/location", async ({ body }) => {
-        const { device_id, latitude, longitude, device_name, body_number } = body;
         console.log("Location received:", body);
-        if (!device_id || !latitude || !longitude) {
+
+        // Check if we have the nested structure
+        const device_info = body.device_info;
+        const gps_data = body.gps_data;
+
+        if (!device_info || !gps_data || !gps_data.latitude || !gps_data.longitude) {
           return { error: "Missing GPS data" };
         }
 
         const locationData: LocationData = {
-          device_id,
-          latitude,
-          longitude,
-          device_name,
-          body_number,
+          device_id: device_info.device_id,
+          latitude: gps_data.latitude,
+          longitude: gps_data.longitude,
+          device_name: device_info.device_name,
+          body_number: device_info.body_number,
           timestamp: Date.now(),
+          // Add additional fields from the GPS data
+          altitude: gps_data.altitude,
+          speed: gps_data.speed,
+          course: gps_data.course,
+          satellites: gps_data.satellites,
+          hdop: gps_data.hdop,
+          gps_time: gps_data.time,
+          gps_date: gps_data.date
         };
 
         sseManager.updateLocation(locationData);
-
         return { message: "Location received", status: "success" };
       }, {
         body: t.Object({
-          device_id: t.String(),
-          latitude: t.Number(),
-          longitude: t.Number(),
-          device_name: t.String(),
-          body_number: t.String(),
-        }),
+          device_info: t.Object({
+            device_id: t.String(),
+            body_number: t.String(),
+            device_name: t.String()
+          }),
+          gps_data: t.Object({
+            latitude: t.Number(),
+            longitude: t.Number(),
+            altitude: t.Optional(t.Number()),
+            speed: t.Optional(t.Number()),
+            course: t.Optional(t.Number()),
+            satellites: t.Optional(t.Number()),
+            hdop: t.Optional(t.Number()),
+            date: t.Optional(t.String()),
+            time: t.Optional(t.String())
+          })
+        })
       })
       .get("/page/user-data:username", async ({ params }) => {
         const { username } = params;

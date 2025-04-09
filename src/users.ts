@@ -7,7 +7,8 @@ import { users, activeSessions } from "./dbconfig";
 export const authService = new Elysia({ name: 'auth/service' })
   .use(jwt({
     name: 'jwt',
-    secret: process.env.JWT_SECRET || 'your-secure-secret-key'
+    secret: process.env.JWT_SECRET || 'iTrack',
+    sameSite: 'Lax',
   }))
   .macro({
     isAuthenticated(enabled = true) {

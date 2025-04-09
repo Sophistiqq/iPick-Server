@@ -101,6 +101,14 @@ export interface LocationData {
   body_number: string;
   device_name: string;
   timestamp: number;
+
+  altitude?: number;
+  speed?: number;
+  course?: number;
+  satellites?: number;
+  hdop?: number;
+  gps_time?: string;
+  gps_date?: string;
 }
 
 
