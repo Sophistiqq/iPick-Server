@@ -54,7 +54,7 @@ dbConnected
         jwt({
           name: "jwt",
           secret: process.env.JWT_SECRET || "secret",
-          sameSite: "Lax",
+          sameSite: "None",
           inject: true,
         })
       )
