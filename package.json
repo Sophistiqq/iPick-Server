@@ -2,7 +2,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "bun run --watch src/index.ts",
-    "start": "NODE_ENV=production bun src/index.ts"
+    "start": "NODE_ENV=production bun src/index.ts",
+    "build": "bun install && bun build	--compile --minify-whitespace	--minify-syntax	--target bun 	--outfile server 	src/index.ts"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.2.0",
